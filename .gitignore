@@ -1,0 +1,65 @@
+# Logs
+*.log
+logs/
+*.log.*
+
+# Configuration files with credentials
+config.php
+*_config.php
+*.conf
+*.ini
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Cache directories
+cache/
+tmp/
+
+# Backup files
+*.bak
+*.backup
+
+# macOS
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# PHP composer
+vendor/
+composer.lock
+
+# Node modules (if any)
+node_modules/
+
+# Sensitive data directories
+private/
+secrets/
+
+# WHMCS specific
+configuration.php
+attachments/
+downloads/
+templates_c/
+vendor/
+
+# API keys and credentials
+*api_key*
+*credentials*
+*secret*

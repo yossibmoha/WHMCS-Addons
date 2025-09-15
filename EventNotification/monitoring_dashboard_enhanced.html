@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WHMCS Monitoring Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .header .subtitle {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .btn:hover {
+            background: rgba(255,255,255,0.3);
+            border-color: rgba(255,255,255,0.5);
+            transform: translateY(-2px);
+        }
+        
+        .btn.primary {
+            background: #28a745;
+            border-color: #28a745;
+        }
+        
+        .main-content {
+            padding: 30px;
+        }
+        
+        .status-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        
+        .status-card {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 12px;
+            border-left: 5px solid #28a745;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .status-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+        }
+        
+        .status-card.warning {
+            border-left-color: #ffc107;
+            background: linear-gradient(135deg, #fff3cd 0%, #f8f9fa 100%);
+        }
+        
+        .status-card.error {
+            border-left-color: #dc3545;
+            background: linear-gradient(135deg, #f8d7da 0%, #f8f9fa 100%);
+        }
+        
+        .status-card.good {
+            border-left-color: #28a745;
+            background: linear-gradient(135deg, #d4edda 0%, #f8f9fa 100%);
+        }
+        
+        .status-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .status-icon {
+            font-size: 2em;
+            margin-right: 15px;
+            opacity: 0.8;
+        }
+        
+        .status-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .status-value {
+            font-size: 2.2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .status-card.good .status-value { color: #28a745; }
+        .status-card.warning .status-value { color: #856404; }
+        .status-card.error .status-value { color: #721c24; }
+        
+        .status-details {
+            font-size: 0.95em;
+            color: #6c757d;
+            line-height: 1.5;
+        }
+        
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border: 1px solid #e9ecef;
+        }
+        
+        .chart-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #2c3e50;
+            text-align: center;
+        }
+        
+        .logs-section {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border: 1px solid #e9ecef;
+            overflow: hidden;
+        }
+        
+        .logs-header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logs-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .logs-container {
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 0;
+        }
+        
+        .log-entry {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f8f9fa;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            transition: background 0.2s ease;
+        }
+        
+        .log-entry:hover {
+            background: #f8f9fa;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-entry.error {
+            background: rgba(220, 53, 69, 0.05);
+            border-left: 4px solid #dc3545;
+        }
+        
+        .log-entry.warning {
+            background: rgba(255, 193, 7, 0.05);
+            border-left: 4px solid #ffc107;
+        }
+        
+        .log-entry.info {
+            background: rgba(40, 167, 69, 0.05);
+            border-left: 4px solid #28a745;
+        }
+        
+        .log-timestamp {
+            color: #6c757d;
+            font-weight: 500;
+        }
+        
+        .log-level {
+            font-weight: bold;
+            margin: 0 10px;
+        }
+        
+        .log-entry.error .log-level { color: #dc3545; }
+        .log-entry.warning .log-level { color: #856404; }
+        .log-entry.info .log-level { color: #28a745; }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            font-size: 1.1em;
+            color: #6c757d;
+        }
+        
+        .spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .connection-status {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            display: flex;
+            align-items: center;
+            font-size: 0.9em;
+        }
+        
+        .connection-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .connection-indicator.connected { background: #28a745; }
+        .connection-indicator.disconnected { background: #dc3545; }
+        
+        @media (max-width: 768px) {
+            .container { margin: 10px; border-radius: 10px; }
+            .header { padding: 20px; }
+            .header h1 { font-size: 2em; }
+            .main-content { padding: 20px; }
+            .controls { gap: 10px; }
+            .btn { padding: 10px 20px; font-size: 13px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="connection-status">
+                <div class="connection-indicator" id="connectionIndicator"></div>
+                <span id="connectionStatus">Connecting...</span>
+            </div>
+            <h1>🖥️ WHMCS Monitoring Dashboard</h1>
+            <div class="subtitle">Real-time system monitoring and alerts</div>
+            <div class="controls">
+                <button class="btn primary" onclick="refreshData()">🔄 Refresh Now</button>
+                <button class="btn" onclick="toggleAutoRefresh()" id="autoRefreshBtn">⏸️ Pause Auto-Refresh</button>
+                <button class="btn" onclick="exportLogs()">📥 Export Logs</button>
+                <button class="btn" onclick="showSettings()">⚙️ Settings</button>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="status-overview" id="statusGrid">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading system status...
+                </div>
+            </div>
+            
+            <div class="charts-section" id="chartsSection">
+                <div class="chart-container">
+                    <div class="chart-title">Response Time (Last 24 Hours)</div>
+                    <canvas id="responseTimeChart" width="400" height="200"></canvas>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title">System Resources</div>
+                    <canvas id="resourceChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+            
+            <div class="logs-section">
+                <div class="logs-header">
+                    <div class="logs-title">📋 Live Event Log</div>
+                    <div class="controls">
+                        <button class="btn" onclick="clearLogs()">🗑️ Clear</button>
+                        <button class="btn" onclick="filterLogs('error')">🔴 Errors Only</button>
+                        <button class="btn" onclick="filterLogs('all')">📄 Show All</button>
+                    </div>
+                </div>
+                <div class="logs-container" id="logEntries">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Loading recent events...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const config = {
+            apiBaseUrl: '/whmcs_api_monitor.php',
+            serverMonitorUrl: '/server_monitor_api.php',
+            refreshInterval: 30000, // 30 seconds
+            maxLogEntries: 100
+        };
+        
+        // State management
+        let autoRefreshInterval;
+        let isAutoRefreshEnabled = true;
+        let currentFilter = 'all';
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeDashboard();
+        });
+        
+        function initializeDashboard() {
+            refreshData();
+            startAutoRefresh();
+            updateConnectionStatus('connecting');
+        }
+        
+        function refreshData() {
+            updateConnectionStatus('connecting');
+            
+            // Fetch all monitoring data in parallel
+            Promise.allSettled([
+                fetchWHMCSStatus(),
+                fetchServerStatus(),
+                fetchRecentLogs()
+            ]).then(results => {
+                const [whmcsResult, serverResult, logsResult] = results;
+                
+                if (whmcsResult.status === 'fulfilled' && serverResult.status === 'fulfilled') {
+                    updateStatusCards(whmcsResult.value, serverResult.value);
+                    updateConnectionStatus('connected');
+                } else {
+                    updateConnectionStatus('disconnected');
+                    console.error('Failed to fetch monitoring data:', results);
+                }
+                
+                if (logsResult.status === 'fulfilled') {
+                    updateLogEntries(logsResult.value);
+                }
+            });
+        }
+        
+        async function fetchWHMCSStatus() {
+            const response = await fetch(config.apiBaseUrl + '?action=status');
+            if (!response.ok) throw new Error('WHMCS API error');
+            return await response.json();
+        }
+        
+        async function fetchServerStatus() {
+            const response = await fetch(config.serverMonitorUrl + '?action=status');
+            if (!response.ok) throw new Error('Server API error');
+            return await response.json();
+        }
+        
+        async function fetchRecentLogs() {
+            const response = await fetch(config.apiBaseUrl + '?action=logs&limit=50');
+            if (!response.ok) throw new Error('Logs API error');
+            return await response.json();
+        }
+        
+        function updateStatusCards(whmcsData, serverData) {
+            const statusGrid = document.getElementById('statusGrid');
+            
+            const cards = [
+                createStatusCard('Website Health', '🌐', 
+                    whmcsData.website?.status === 'OK' ? 'ONLINE' : 'OFFLINE',
+                    whmcsData.website?.status === 'OK' ? 'good' : 'error',
+                    `Response: ${whmcsData.website?.response_time || 0}ms | SSL: ${whmcsData.ssl?.days_until_expiry || 0} days`
+                ),
+                
+                createStatusCard('Database', '🗄️',
+                    whmcsData.database?.status === 'OK' ? 'HEALTHY' : 'ISSUES',
+                    whmcsData.database?.status === 'OK' ? 'good' : 'error',
+                    `Query time: ${whmcsData.database?.query_time || 0}ms | Connections: Active`
+                ),
+                
+                createStatusCard('Server Resources', '⚡',
+                    serverData.cpu?.usage < 80 ? 'OPTIMAL' : 'HIGH',
+                    serverData.cpu?.usage < 80 ? 'good' : 'warning',
+                    `CPU: ${serverData.cpu?.usage || 0}% | RAM: ${serverData.memory?.usage || 0}% | Disk: ${serverData.disk?.usage || 0}%`
+                ),
+                
+                createStatusCard('Active Services', '🔧',
+                    serverData.services?.running || 'N/A',
+                    'good',
+                    `${serverData.services?.total || 0} total services monitored`
+                ),
+                
+                createStatusCard('Open Tickets', '🎫',
+                    whmcsData.stats?.tickets_open || '0',
+                    (whmcsData.stats?.tickets_open || 0) > 20 ? 'warning' : 'good',
+                    `Pending orders: ${whmcsData.stats?.orders_pending || 0} | Overdue invoices: ${whmcsData.stats?.invoices_overdue || 0}`
+                ),
+                
+                createStatusCard('Backup Status', '💾',
+                    serverData.backup?.status === 'OK' ? 'CURRENT' : 'OUTDATED',
+                    serverData.backup?.status === 'OK' ? 'good' : 'warning',
+                    `Last backup: ${serverData.backup?.last_backup || 'Unknown'} | Size: ${serverData.backup?.size || 'N/A'}`
+                )
+            ];
+            
+            statusGrid.innerHTML = cards.join('');
+        }
+        
+        function createStatusCard(title, icon, value, status, description) {
+            return `
+                <div class="status-card ${status}">
+                    <div class="status-header">
+                        <div class="status-icon">${icon}</div>
+                        <div class="status-title">${title}</div>
+                    </div>
+                    <div class="status-value">${value}</div>
+                    <div class="status-details">${description}</div>
+                </div>
+            `;
+        }
+        
+        function updateLogEntries(logs) {
+            const logContainer = document.getElementById('logEntries');
+            
+            if (!logs || logs.length === 0) {
+                logContainer.innerHTML = '<div class="loading">No recent events found</div>';
+                return;
+            }
+            
+            const logHTML = logs.map(log => `
+                <div class="log-entry ${log.level}" data-level="${log.level}">
+                    <span class="log-timestamp">${log.timestamp}</span>
+                    <span class="log-level">[${log.level.toUpperCase()}]</span>
+                    <span class="log-message">${log.message}</span>
+                </div>
+            `).join('');
+            
+            logContainer.innerHTML = logHTML;
+            
+            // Apply current filter
+            if (currentFilter !== 'all') {
+                filterLogs(currentFilter);
+            }
+        }
+        
+        function updateConnectionStatus(status) {
+            const indicator = document.getElementById('connectionIndicator');
+            const statusText = document.getElementById('connectionStatus');
+            
+            indicator.className = `connection-indicator ${status}`;
+            
+            switch (status) {
+                case 'connected':
+                    statusText.textContent = 'Connected';
+                    break;
+                case 'connecting':
+                    statusText.textContent = 'Connecting...';
+                    break;
+                case 'disconnected':
+                    statusText.textContent = 'Disconnected';
+                    break;
+            }
+        }
+        
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            
+            if (isAutoRefreshEnabled) {
+                autoRefreshInterval = setInterval(refreshData, config.refreshInterval);
+            }
+        }
+        
+        function toggleAutoRefresh() {
+            const button = document.getElementById('autoRefreshBtn');
+            isAutoRefreshEnabled = !isAutoRefreshEnabled;
+            
+            if (isAutoRefreshEnabled) {
+                button.innerHTML = '⏸️ Pause Auto-Refresh';
+                startAutoRefresh();
+            } else {
+                button.innerHTML = '▶️ Resume Auto-Refresh';
+                clearInterval(autoRefreshInterval);
+            }
+        }
+        
+        function filterLogs(level) {
+            currentFilter = level;
+            const logs = document.querySelectorAll('.log-entry');
+            
+            logs.forEach(log => {
+                if (level === 'all' || log.dataset.level === level) {
+                    log.style.display = 'block';
+                } else {
+                    log.style.display = 'none';
+                }
+            });
+        }
+        
+        function clearLogs() {
+            if (confirm('Clear all log entries from view?')) {
+                document.getElementById('logEntries').innerHTML = '<div class="loading">Logs cleared</div>';
+            }
+        }
+        
+        function exportLogs() {
+            // Implementation for exporting logs
+            alert('Export functionality would be implemented here');
+        }
+        
+        function showSettings() {
+            // Implementation for settings modal
+            alert('Settings panel would be implemented here');
+        }
+        
+        // Error handling
+        window.addEventListener('error', function(e) {
+            console.error('Dashboard error:', e.error);
+            updateConnectionStatus('disconnected');
+        });
+        
+        // Visibility API for pausing when tab is not active
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                clearInterval(autoRefreshInterval);
+            } else if (isAutoRefreshEnabled) {
+                startAutoRefresh();
+            }
+        });
+    </script>
+</body>
+</html>

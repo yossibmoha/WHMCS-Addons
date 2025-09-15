@@ -1,0 +1,67 @@
+# ntfy server configuration with security features
+# Location: /etc/ntfy/server.yml
+
+# Base configuration
+base-url: "https://your-ntfy-server.com"
+listen-http: ":80"  # Use with reverse proxy for HTTPS
+listen-https: ""    # Leave empty when using reverse proxy
+listen-unix: ""
+
+# Cache settings
+cache-file: "/var/cache/ntfy/cache.db"
+cache-duration: "12h"
+cache-startup-queries: "pragma journal_mode=WAL; pragma synchronous=normal; pragma temp_store=memory;"
+
+# Performance settings
+keepalive-interval: "45s"
+manager-interval: "1m"
+disallowed-topics: ["docs", "static"]
+
+# Security - Authentication required
+auth-file: "/var/lib/ntfy/user.db"
+auth-default-access: "deny-all"
+
+# Security - Rate limiting
+visitor-request-limit-burst: 60
+visitor-request-limit-replenish: "1s"
+visitor-email-limit-burst: 16
+visitor-email-limit-replenish: "1h"
+visitor-subscription-limit: 30
+visitor-attachment-total-size-limit: "100M"
+visitor-attachment-daily-bandwidth-limit: "500M"
+
+# Message limits
+message-size-limit: "4K"
+message-delay-limit: "3d"
+
+# Web interface
+web-root: "/"
+
+# Behind reverse proxy settings
+behind-proxy: true
+stripe-webhook-key: ""
+
+# Logging
+log-level: "INFO"
+log-format: "text"
+
+# Firebase/APNS (for mobile push) - optional
+firebase-key-file: ""
+
+# SMTP settings for email notifications (optional)
+smtp-sender-addr: ""
+smtp-sender-user: ""
+smtp-sender-pass: ""
+smtp-server-listen: ""
+smtp-server-domain: ""
+smtp-server-addr-prefix: ""
+
+# Metrics and health
+enable-metrics: true
+metrics-listen-http: ":9090"  # Prometheus metrics
+
+# File attachments (optional)
+attachment-cache-dir: "/var/cache/ntfy/attachments"
+attachment-total-size-limit: "5G"
+attachment-file-size-limit: "15M"
+attachment-expiry-duration: "3h"

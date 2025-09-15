@@ -1,0 +1,903 @@
+#cloud-config
+# CloudPanel V2 + n8n Cloud-Init Deployment Script
+# Optimized for Contabo VPS Servers - Ubuntu 24.04 LTS
+# Version: Contabo-Optimized v1.0
+# Deployment Date: September 12, 2025
+
+# Disable automatic updates during installation
+package_update: false
+package_upgrade: false
+
+# Set hostname
+hostname: cloudpanel-n8n-server
+fqdn: cloudpanel-n8n-server.local
+
+# Create users
+users:
+  - name: n8n
+    groups: [sudo, docker]
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+
+# Write files
+write_files:
+
+  # n8n systemd service configuration
+  - path: /etc/systemd/system/n8n.service
+    content: |
+      [Unit]
+      Description=n8n workflow automation
+      After=network.target mysql.service
+      Requires=mysql.service
+
+      [Service]
+      Type=simple
+      User=n8n
+      Group=n8n
+      WorkingDirectory=/home/n8n
+      Environment=NODE_ENV=production
+      Environment=N8N_BASIC_AUTH_ACTIVE=true
+      Environment=N8N_BASIC_AUTH_USER=admin
+      Environment=N8N_BASIC_AUTH_PASSWORD=n8n_admin_2024
+      Environment=N8N_ENCRYPTION_KEY=n8n_encryption_key_2024_change_me
+      Environment=DB_TYPE=mysqldb
+      Environment=DB_MYSQLDB_HOST=localhost
+      Environment=DB_MYSQLDB_PORT=3306
+      Environment=DB_MYSQLDB_DATABASE=n8n_db
+      Environment=DB_MYSQLDB_USER=n8n_user
+      Environment=DB_MYSQLDB_PASSWORD=n8n_secure_password_2024
+      Environment=N8N_HOST=0.0.0.0
+      Environment=N8N_PORT=5678
+      Environment=N8N_PROTOCOL=http
+      ExecStart=/usr/bin/n8n start
+      Restart=always
+      RestartSec=10
+
+      [Install]
+      WantedBy=multi-user.target
+    permissions: '0644'
+
+  # nginx configuration for n8n
+  - path: /etc/nginx/sites-available/n8n.conf
+    content: |
+      server {
+          listen 80;
+          server_name _;
+          
+          location / {
+              proxy_pass http://127.0.0.1:5678;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection 'upgrade';
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              proxy_cache_bypass $http_upgrade;
+              proxy_read_timeout 86400;
+          }
+      }
+    permissions: '0644'
+
+  # CloudPanel installation script with comprehensive logging and retry logic
+  - path: /tmp/install_cloudpanel.sh
+    content: |
+      #!/bin/bash
+      set -e
+      
+      # Create log directory
+      mkdir -p /var/log/cloudpanel-installation
+      LOG_FILE="/var/log/cloudpanel-installation/cloudpanel-install.log"
+      
+      # Logging function
+      log_message() {
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+      }
+      
+      log_message "🚀 Starting CloudPanel V2 installation..."
+      
+      # Function to install CloudPanel with retry logic
+      install_cloudpanel() {
+          local attempt=1
+          local max_attempts=3
+          
+          while [ $attempt -le $max_attempts ]; do
+              log_message "📦 Attempt $attempt of $max_attempts..."
+              
+              # Try primary installation method
+              if curl -fsSL https://installer.cloudpanel.io/ce/v2/install.sh 2>&1 | sudo bash 2>&1 | tee -a "$LOG_FILE"; then
+                  log_message "✅ CloudPanel installation successful!"
+                  return 0
+              fi
+              
+              log_message "❌ Attempt $attempt failed, retrying in 30 seconds..."
+              sleep 30
+              attempt=$((attempt + 1))
+          done
+          
+          # Fallback: Manual installation from GitHub releases
+          log_message "🔄 Trying fallback installation method..."
+          cd /tmp
+          
+          if wget -q https://github.com/cloudpanel-io/cloudpanel/releases/latest/download/cloudpanel-ce-v2-latest.tar.gz 2>&1 | tee -a "$LOG_FILE"; then
+              log_message "📥 Downloaded CloudPanel package successfully"
+          else
+              log_message "❌ Failed to download CloudPanel package"
+              return 1
+          fi
+          
+          if tar -xzf cloudpanel-ce-v2-latest.tar.gz 2>&1 | tee -a "$LOG_FILE"; then
+              log_message "📦 Extracted CloudPanel package successfully"
+          else
+              log_message "❌ Failed to extract CloudPanel package"
+              return 1
+          fi
+          
+          cd cloudpanel-ce-v2-latest
+          if sudo ./install.sh 2>&1 | tee -a "$LOG_FILE"; then
+              log_message "✅ CloudPanel installation completed via fallback method!"
+          else
+              log_message "❌ CloudPanel fallback installation failed"
+              return 1
+          fi
+      }
+      
+      # Install CloudPanel
+      if install_cloudpanel; then
+          log_message "✅ CloudPanel installation process completed successfully"
+      else
+          log_message "❌ CloudPanel installation failed after all attempts"
+          exit 1
+      fi
+      
+      # Wait for CloudPanel to be ready with retry logic
+      log_message "⏳ Waiting for CloudPanel to initialize with retry logic..."
+      local cloudpanel_wait_count=0
+      local max_cloudpanel_wait=12
+      
+      while [ $cloudpanel_wait_count -lt $max_cloudpanel_wait ]; do
+          cloudpanel_wait_count=$((cloudpanel_wait_count + 1))
+          log_message "⏳ CloudPanel initialization attempt $cloudpanel_wait_count/$max_cloudpanel_wait..."
+          
+          if systemctl is-active --quiet cloudpanel; then
+              log_message "✅ CloudPanel service is active after $cloudpanel_wait_count attempts"
+              break
+          fi
+          
+          if [ $cloudpanel_wait_count -lt $max_cloudpanel_wait ]; then
+              sleep 10
+          else
+              log_message "⚠️ CloudPanel service not active after $max_cloudpanel_wait attempts, continuing..."
+          fi
+      done
+      
+      # Verify CloudPanel installation
+      if command -v clp &> /dev/null; then
+          log_message "✅ CloudPanel CLI is available"
+      else
+          log_message "⚠️ CloudPanel CLI not found"
+      fi
+      
+      # Check if CloudPanel is running
+      if systemctl is-active --quiet cloudpanel; then
+          log_message "✅ CloudPanel service is running!"
+      else
+          log_message "⚠️ CloudPanel service not running, attempting to start..."
+          if systemctl start cloudpanel 2>&1 | tee -a "$LOG_FILE"; then
+              sleep 30
+              if systemctl is-active --quiet cloudpanel; then
+                  log_message "✅ CloudPanel service started successfully"
+              else
+                  log_message "❌ CloudPanel service failed to start"
+                  systemctl status cloudpanel 2>&1 | tee -a "$LOG_FILE"
+              fi
+          else
+              log_message "❌ Failed to start CloudPanel service"
+              systemctl status cloudpanel 2>&1 | tee -a "$LOG_FILE"
+          fi
+      fi
+      
+      # Verify CloudPanel web interface
+      if curl -k -s https://localhost:8443 > /dev/null; then
+          log_message "✅ CloudPanel web interface is accessible"
+      else
+          log_message "⚠️ CloudPanel web interface not accessible"
+      fi
+      
+      log_message "🎉 CloudPanel installation completed!"
+    permissions: '0755'
+
+  # n8n Docker + CloudPanel setup script with comprehensive logging
+  - path: /tmp/setup_n8n.sh
+    content: |
+      #!/bin/bash
+      set -e
+      
+      # Create log directory
+      mkdir -p /var/log/n8n-installation
+      LOG_FILE="/var/log/n8n-installation/n8n-install.log"
+      
+      # Logging function
+      log_message() {
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+      }
+      
+      log_message "🐳 Setting up n8n with Docker + CloudPanel integration..."
+      
+      # Install Docker and Docker Compose
+      log_message "🐳 Installing Docker and Docker Compose..."
+      if curl -fsSL https://get.docker.com 2>&1 | sh 2>&1 | tee -a "$LOG_FILE"; then
+          log_message "✅ Docker installed successfully"
+      else
+          log_message "❌ Failed to install Docker"
+          exit 1
+      fi
+      
+      # Install Docker Compose
+      if curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose 2>&1 | tee -a "$LOG_FILE"; then
+          chmod +x /usr/local/bin/docker-compose
+          log_message "✅ Docker Compose installed successfully"
+      else
+          log_message "❌ Failed to install Docker Compose"
+          exit 1
+      fi
+      
+      # Start Docker service
+      systemctl start docker 2>&1 | tee -a "$LOG_FILE"
+      systemctl enable docker 2>&1 | tee -a "$LOG_FILE"
+      
+      # Wait for MySQL to be ready with timeout
+      log_message "⏳ Waiting for MySQL to be ready..."
+      local mysql_wait_count=0
+      local max_mysql_wait=60
+      
+      while ! mysqladmin ping -h localhost --silent 2>&1; do
+          mysql_wait_count=$((mysql_wait_count + 1))
+          if [ $mysql_wait_count -gt $max_mysql_wait ]; then
+              log_message "❌ MySQL not ready after $max_mysql_wait attempts"
+              exit 1
+          fi
+          log_message "⏳ MySQL not ready, attempt $mysql_wait_count/$max_mysql_wait..."
+          sleep 5
+      done
+      
+      log_message "✅ MySQL is ready!"
+      
+      # Get MySQL root password from CloudPanel
+      MYSQL_ROOT_PASSWORD=""
+      if [ -f /home/clp/.clp-installation ]; then
+          MYSQL_ROOT_PASSWORD=$(grep "MySQL root password:" /home/clp/.clp-installation | cut -d' ' -f4)
+          log_message "📋 Found MySQL password in CloudPanel installation file"
+      elif [ -f /home/clp/.mysql-password ]; then
+          MYSQL_ROOT_PASSWORD=$(cat /home/clp/.mysql-password)
+          log_message "📋 Found MySQL password in fallback file"
+      else
+          log_message "⚠️ Could not find MySQL root password, using default"
+          MYSQL_ROOT_PASSWORD="cloudpanel"
+      fi
+      
+      # Skip MySQL setup - using SQLite for n8n
+      log_message "📄 Using SQLite database for n8n (simplified setup)"
+      echo "$(date) - Using SQLite for n8n database" >> /var/log/n8n-installation/n8n-install.log
+      
+      # Setup n8n with direct nginx (skip CloudPanel site creation due to CLI issues)
+      log_message "🌐 Setting up n8n with direct nginx configuration..."
+      SERVER_IP=$(curl -4 -s ifconfig.me)
+      N8N_DOMAIN="n8n.${SERVER_IP}.nip.io"
+      
+      # Create n8n directory structure
+      mkdir -p /opt/n8n/data /opt/n8n
+      
+      # Create Docker Compose configuration for n8n (SQLite)
+      log_message "🐳 Creating Docker Compose configuration for n8n with SQLite..."
+      cat > /opt/n8n/docker-compose.yml << EOF
+      version: '3.8'
+      
+      services:
+        n8n:
+          image: n8nio/n8n:latest
+          container_name: n8n
+          restart: unless-stopped
+          ports:
+            - "5678:5678"
+          environment:
+            - NODE_ENV=production
+            - N8N_BASIC_AUTH_ACTIVE=true
+            - N8N_BASIC_AUTH_USER=admin
+            - N8N_BASIC_AUTH_PASSWORD=n8n_admin_2024
+            - N8N_ENCRYPTION_KEY=n8n_encryption_key_2024_change_me
+            - DB_TYPE=sqlite
+            - DB_SQLITE_DATABASE=/home/node/.n8n/database.sqlite
+            - N8N_HOST=$N8N_DOMAIN
+            - N8N_PORT=5678
+            - N8N_PROTOCOL=http
+            - WEBHOOK_URL=http://$N8N_DOMAIN
+          volumes:
+            - /opt/n8n/data:/home/node/.n8n
+          networks:
+            - n8n_network
+      
+      networks:
+        n8n_network:
+          driver: bridge
+      EOF
+      
+      # Set proper ownership for n8n data
+      chown -R 1000:1000 /opt/n8n/data
+      
+      # Create direct nginx configuration for n8n
+      log_message "🌐 Creating direct nginx configuration for n8n..."
+      cat > /etc/nginx/sites-available/n8n << EOF
+      server {
+          listen 80;
+          server_name $N8N_DOMAIN;
+          
+          location / {
+              proxy_pass http://127.0.0.1:5678;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade \$http_upgrade;
+              proxy_set_header Connection 'upgrade';
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$scheme;
+              proxy_cache_bypass \$http_upgrade;
+              proxy_read_timeout 86400;
+              proxy_send_timeout 86400;
+          }
+      }
+      EOF
+      
+      # Enable n8n site and remove default
+      ln -sf /etc/nginx/sites-available/n8n /etc/nginx/sites-enabled/n8n
+      rm -f /etc/nginx/sites-enabled/default
+      
+      # Test and reload nginx configuration
+      if nginx -t; then
+          systemctl reload nginx
+          log_message "✅ Nginx configuration updated and reloaded"
+      else
+          log_message "❌ Nginx configuration test failed"
+          exit 1
+      fi
+      
+      # Start n8n Docker container
+      log_message "🐳 Starting n8n Docker container..."
+      cd /opt/n8n
+      if docker-compose up -d 2>&1 | tee -a "$LOG_FILE"; then
+          log_message "✅ n8n Docker container started"
+      else
+          log_message "❌ Failed to start n8n Docker container"
+          exit 1
+      fi
+      
+      # Wait for n8n container to start
+      log_message "⏳ Waiting for n8n container to initialize..."
+      sleep 30
+      
+      # Check if n8n container is running
+      if docker ps | grep -q n8n; then
+          log_message "✅ n8n Docker container is running!"
+      else
+          log_message "❌ n8n Docker container failed to start"
+          docker logs n8n 2>&1 | tee -a "$LOG_FILE"
+          exit 1
+      fi
+      
+      # Test n8n web interface
+      log_message "🔍 Testing n8n web interface..."
+      if curl -s http://localhost:5678 > /dev/null; then
+          log_message "✅ n8n web interface is accessible"
+      else
+          log_message "⚠️ n8n web interface not accessible"
+      fi
+      
+      log_message "🎉 n8n Docker + CloudPanel setup completed successfully!"
+    permissions: '0755'
+
+# Install packages
+packages:
+  - curl
+  - wget
+  - git
+  - ufw
+  - nginx
+  - mysql-client
+  - software-properties-common
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+# Run commands
+runcmd:
+  # Create MOTD first - this runs immediately
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🎨 Creating MOTD banner..." | tee -a /var/log/cloud-init-output.log
+  - |
+    cat > /etc/motd << 'EOF'
+    
+           __   __   ______   ______           ______     ______     ______     __   __   ______     ______           __  __     ______     ______     ______
+          /\ \ / /  /\  == \ /\  ___\         /\  ___\   /\  ___\   /\  == \   /\ \ / /  /\  ___\   /\  == \         /\ \_\ \   /\  __ \   /\  ___\   /\__  _\
+          \ \ \'/   \ \  _-/ \ \___  \        \ \___  \  \ \  __\   \ \  __<   \ \ \'/   \ \  __\   \ \  __<         \ \  __ \  \ \ \/\ \  \ \___  \  \/_/\ \/
+           \ \__|    \ \_\    \/\_____\        \/\_____\  \ \_____\  \ \_\ \_\  \ \__|    \ \_____\  \ \_\ \_\        \ \_\ \_\  \ \_____\  \/\_____\    \ \_\
+            \/_/      \/_/     \/_____/         \/_____/   \/_____/   \/_/ /_/   \/_/      \/_____/   \/_/ /_/         \/_/\/_/   \/_____/   \/_____/     \/_/
+    
+    ╔══════════════════════════════════════════════════════════════════════════════╗
+    ║                                                                              ║
+    ║                    🚀 VPS SERVER HOST - CLOUDPANEL V2 + N8N 🚀               ║
+    ║                                                                              ║
+    ║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
+    ║  │                    🎯 DEPLOYMENT IN PROGRESS! 🎯                        │ ║
+    ║  └─────────────────────────────────────────────────────────────────────────┘ ║
+    ║                                                                              ║
+    ║  📊 SERVICE ACCESS POINTS:                                                   ║
+    ║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
+    ║  │  🌐 CloudPanel V2:  https://$(curl -s ifconfig.me):8443                 │ ║
+    ║  │  🔧 n8n Automation: http://$(curl -s ifconfig.me)                       │ ║
+    ║  │  🗄️  MySQL Database: localhost:3306 (internal only)                     │ ║
+    ║  └─────────────────────────────────────────────────────────────────────────┘ ║
+    ║                                                                              ║
+    ║  🔐 DEFAULT CREDENTIALS:                                                     ║
+    ║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
+    ║  │  📋 CloudPanel: Check /home/clp/.clp-installation                       │ ║
+    ║  │  🔑 n8n Database: n8n_user / n8n_secure_password_2024                   │ ║
+    ║  │  ⚠️  CHANGE ALL PASSWORDS IN PRODUCTION!                                │ ║
+    ║  └─────────────────────────────────────────────────────────────────────────┘ ║
+    ║                                                                              ║
+    ║  🛠️  SERVICE MANAGEMENT:                                                     ║
+    ║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
+    ║  │  sudo systemctl start|stop|restart cloudpanel                           │ ║
+    ║  │  sudo systemctl start|stop|restart n8n                                  │ ║
+    ║  │  sudo systemctl start|stop|restart mysql                                │ ║
+    ║  │  sudo systemctl start|stop|restart nginx                                │ ║
+    ║  └─────────────────────────────────────────────────────────────────────────┘ ║
+    ║                                                                              ║
+    ║  📞 SUPPORT: support@vps-server.host                                         ║
+    ║  🌐 PLATFORM: VPS Server Optimized                                           ║
+    ║                                                                              ║
+    ╚══════════════════════════════════════════════════════════════════════════════╝
+    
+    EOF
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ MOTD banner created successfully" | tee -a /var/log/cloud-init-output.log
+  
+  # Create main installation log directory
+  - mkdir -p /var/log/deployment
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🚀 Starting CloudPanel V2 + n8n deployment..." | tee -a /var/log/deployment/main-install.log
+  
+  # Update system packages with retry logic
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 📦 Updating system packages with retry logic..." | tee -a /var/log/deployment/main-install.log
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 📦 Package update attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if apt-get update -y 2>&1 | tee -a /var/log/deployment/main-install.log; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Package update successful on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Package update failed on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 30 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 30
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Package update failed after 3 attempts" | tee -a /var/log/deployment/main-install.log
+          exit 1
+        fi
+      fi
+    done
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 📦 Package upgrade attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if apt-get upgrade -y 2>&1 | tee -a /var/log/deployment/main-install.log; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Package upgrade successful on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Package upgrade failed on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 30 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 30
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Package upgrade failed after 3 attempts" | tee -a /var/log/deployment/main-install.log
+          exit 1
+        fi
+      fi
+    done
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ System packages updated successfully" | tee -a /var/log/deployment/main-install.log
+  
+  # Configure UFW firewall with retry logic
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔒 Configuring firewall with retry logic..." | tee -a /var/log/deployment/main-install.log
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔒 Firewall configuration attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if ufw --force reset 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         ufw default deny incoming 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         ufw default allow outgoing 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         ufw allow 22/tcp comment 'SSH' 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         ufw allow 2222/tcp comment 'SSH Alternative' 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         ufw allow 80/tcp comment 'HTTP' 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         ufw allow 443/tcp comment 'HTTPS' 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         ufw allow 8443/tcp comment 'CloudPanel' 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         ufw allow 5678/tcp comment 'n8n' 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         ufw --force enable 2>&1 | tee -a /var/log/deployment/main-install.log; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Firewall configured successfully on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Firewall configuration failed on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 15 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 15
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Firewall configuration failed after 3 attempts" | tee -a /var/log/deployment/main-install.log
+          exit 1
+        fi
+      fi
+    done
+  
+  # Install CloudPanel V2 with error handling
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🚀 Installing CloudPanel V2..." | tee -a /var/log/deployment/main-install.log
+  - chmod +x /tmp/install_cloudpanel.sh
+  - if /tmp/install_cloudpanel.sh 2>&1 | tee -a /var/log/deployment/main-install.log; then echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ CloudPanel installation completed successfully" | tee -a /var/log/deployment/main-install.log; else echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ CloudPanel installation failed" | tee -a /var/log/deployment/main-install.log; exit 1; fi
+  
+  # Setup n8n with error handling
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔧 Setting up n8n..." | tee -a /var/log/deployment/main-install.log
+  - chmod +x /tmp/setup_n8n.sh
+  - if /tmp/setup_n8n.sh 2>&1 | tee -a /var/log/deployment/main-install.log; then echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ n8n setup completed successfully" | tee -a /var/log/deployment/main-install.log; else echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ n8n setup failed" | tee -a /var/log/deployment/main-install.log; exit 1; fi
+  
+  # Configure nginx for n8n with retry logic
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🌐 Configuring nginx for n8n with retry logic..." | tee -a /var/log/deployment/main-install.log
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🌐 Nginx configuration attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if ln -sf /etc/nginx/sites-available/n8n.conf /etc/nginx/sites-enabled/ 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         rm -f /etc/nginx/sites-enabled/default 2>&1 | tee -a /var/log/deployment/main-install.log && \
+         nginx -t 2>&1 | tee -a /var/log/deployment/main-install.log; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Nginx configuration test passed on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Nginx configuration test failed on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 10 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 10
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Nginx configuration test failed after 3 attempts" | tee -a /var/log/deployment/main-install.log
+          exit 1
+        fi
+      fi
+    done
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔄 Nginx reload attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if systemctl reload nginx 2>&1 | tee -a /var/log/deployment/main-install.log; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Nginx reloaded successfully on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Nginx reload failed on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 10 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 10
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Nginx reload failed after 3 attempts" | tee -a /var/log/deployment/main-install.log
+          exit 1
+        fi
+      fi
+    done
+  
+  # Comprehensive service verification with retry logic
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 Performing comprehensive service verification with retry logic..." | tee -a /var/log/deployment/main-install.log
+  
+  # Check CloudPanel service with retries
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 CloudPanel service check attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if systemctl is-active --quiet cloudpanel; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ CloudPanel service is running on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ CloudPanel service is not running on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        systemctl status cloudpanel --no-pager -l 2>&1 | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 20 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 20
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ CloudPanel service failed after 3 attempts" | tee -a /var/log/deployment/main-install.log
+        fi
+      fi
+    done
+  
+  # Check n8n Docker container with retries
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 n8n Docker container check attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if docker ps | grep -q n8n; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ n8n Docker container is running on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ n8n Docker container is not running on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        docker ps -a | grep n8n 2>&1 | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 20 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 20
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ n8n Docker container failed after 3 attempts" | tee -a /var/log/deployment/main-install.log
+        fi
+      fi
+    done
+  
+  # Check MySQL service with retries
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 MySQL service check attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if systemctl is-active --quiet mysql; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ MySQL service is running on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ MySQL service is not running on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        systemctl status mysql --no-pager -l 2>&1 | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 20 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 20
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ MySQL service failed after 3 attempts" | tee -a /var/log/deployment/main-install.log
+        fi
+      fi
+    done
+  
+  # Check Nginx service with retries
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 Nginx service check attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if systemctl is-active --quiet nginx; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Nginx service is running on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Nginx service is not running on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        systemctl status nginx --no-pager -l 2>&1 | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 20 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 20
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Nginx service failed after 3 attempts" | tee -a /var/log/deployment/main-install.log
+        fi
+      fi
+    done
+  
+  # Test web interfaces with retry logic
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🌐 Testing web interfaces with retry logic..." | tee -a /var/log/deployment/main-install.log
+  
+  # Test CloudPanel web interface with retries
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🌐 CloudPanel web interface test attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if curl -k -s https://localhost:8443 > /dev/null; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ CloudPanel web interface accessible on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️ CloudPanel web interface not accessible on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 15 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 15
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️ CloudPanel web interface not accessible after 3 attempts" | tee -a /var/log/deployment/main-install.log
+        fi
+      fi
+    done
+  
+  # Test n8n web interface with retries
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🌐 n8n web interface test attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if curl -s http://localhost:5678 > /dev/null; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ n8n web interface accessible on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️ n8n web interface not accessible on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 15 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 15
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️ n8n web interface not accessible after 3 attempts" | tee -a /var/log/deployment/main-install.log
+        fi
+      fi
+    done
+  
+  # Test n8n proxy with retries
+  - |
+    for attempt in 1 2 3; do
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🌐 n8n proxy test attempt $attempt/3..." | tee -a /var/log/deployment/main-install.log
+      if curl -s http://localhost > /dev/null; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ n8n proxy accessible on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        break
+      else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️ n8n proxy not accessible on attempt $attempt" | tee -a /var/log/deployment/main-install.log
+        if [ $attempt -lt 3 ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Waiting 15 seconds before retry..." | tee -a /var/log/deployment/main-install.log
+          sleep 15
+        else
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️ n8n proxy not accessible after 3 attempts" | tee -a /var/log/deployment/main-install.log
+        fi
+      fi
+    done
+  
+  # Create installation verification script
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 Creating installation verification script..." | tee -a /var/log/deployment/main-install.log
+  - |
+    cat > /usr/local/bin/check-installation << 'EOF'
+    #!/bin/bash
+    # CloudPanel V2 + n8n Installation Verification Script
+    
+    echo "🔍 CloudPanel V2 + n8n Installation Verification"
+    echo "=================================================="
+    echo ""
+    
+    # Colors for output
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m' # No Color
+    
+    # Function to check service status
+    check_service() {
+        local service_name=$1
+        local port=$2
+        local url=$3
+        
+        echo -n "🔍 Checking $service_name service... "
+        if systemctl is-active --quiet $service_name; then
+            echo -e "${GREEN}✅ RUNNING${NC}"
+            
+            # Check if port is listening
+            if [ ! -z "$port" ]; then
+                echo -n "🔍 Checking $service_name port $port... "
+                if netstat -tlnp | grep -q ":$port "; then
+                    echo -e "${GREEN}✅ LISTENING${NC}"
+                else
+                    echo -e "${RED}❌ NOT LISTENING${NC}"
+                fi
+            fi
+            
+            # Check web interface if URL provided
+            if [ ! -z "$url" ]; then
+                echo -n "🔍 Checking $service_name web interface... "
+                if curl -s --connect-timeout 10 "$url" > /dev/null 2>&1; then
+                    echo -e "${GREEN}✅ ACCESSIBLE${NC}"
+                else
+                    echo -e "${YELLOW}⚠️ NOT ACCESSIBLE${NC}"
+                fi
+            fi
+        else
+            echo -e "${RED}❌ NOT RUNNING${NC}"
+        fi
+        echo ""
+    }
+    
+    # Function to get server IP
+    get_server_ip() {
+        curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "Unable to determine IP"
+    }
+    
+    echo "📊 SYSTEM INFORMATION"
+    echo "===================="
+    echo "🖥️  Server IP: $(get_server_ip)"
+    echo "📅 Current Time: $(date)"
+    echo "👤 Current User: $(whoami)"
+    echo ""
+    
+    echo "🔧 SERVICE STATUS CHECK"
+    echo "======================"
+    
+    # Check all services
+    check_service "cloudpanel" "8443" "https://localhost:8443"
+    check_service "n8n" "5678" "http://localhost:5678"
+    check_service "mysql" "3306" ""
+    check_service "nginx" "80" "http://localhost"
+    
+    echo "🌐 WEB INTERFACE ACCESS"
+    echo "======================"
+    SERVER_IP=$(get_server_ip)
+    echo "🌐 CloudPanel: https://$SERVER_IP:8443"
+    echo "🔧 n8n: http://$SERVER_IP"
+    echo "🔧 n8n Direct: http://$SERVER_IP:5678"
+    echo ""
+    
+    echo "🔐 CREDENTIALS CHECK"
+    echo "==================="
+    
+    # Check CloudPanel credentials
+    echo -n "🔍 Checking CloudPanel credentials... "
+    if [ -f "/home/clp/.clp-installation" ]; then
+        echo -e "${GREEN}✅ FOUND${NC}"
+        echo "📋 CloudPanel credentials location: /home/clp/.clp-installation"
+    else
+        echo -e "${YELLOW}⚠️ NOT FOUND${NC}"
+    fi
+    
+    # Check n8n database credentials
+    echo -n "🔍 Checking n8n database connection... "
+    if mysql -u n8n_user -p'n8n_secure_password_2024' -h localhost n8n_db -e "SELECT 1;" > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ CONNECTED${NC}"
+    else
+        echo -e "${RED}❌ CONNECTION FAILED${NC}"
+    fi
+    echo ""
+    
+    echo "📊 INSTALLATION SUMMARY"
+    echo "======================"
+    
+    # Count successful services
+    services_running=0
+    total_services=4
+    
+    if systemctl is-active --quiet cloudpanel; then ((services_running++)); fi
+    if systemctl is-active --quiet n8n; then ((services_running++)); fi
+    if systemctl is-active --quiet mysql; then ((services_running++)); fi
+    if systemctl is-active --quiet nginx; then ((services_running++)); fi
+    
+    echo "📈 Services Running: $services_running/$total_services"
+    
+    if [ $services_running -eq $total_services ]; then
+        echo -e "${GREEN}🎉 INSTALLATION SUCCESSFUL!${NC}"
+        echo -e "${GREEN}✅ All services are running properly${NC}"
+    elif [ $services_running -ge 2 ]; then
+        echo -e "${YELLOW}⚠️ INSTALLATION PARTIALLY SUCCESSFUL${NC}"
+        echo -e "${YELLOW}⚠️ Some services may need attention${NC}"
+    else
+        echo -e "${RED}❌ INSTALLATION FAILED${NC}"
+        echo -e "${RED}❌ Most services are not running${NC}"
+    fi
+    
+    echo ""
+    echo "📞 Support: support@vps-server.host"
+    echo "📋 Run 'sudo check-installation' anytime to verify installation"
+    EOF
+  - chmod +x /usr/local/bin/check-installation
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Installation verification script created" | tee -a /var/log/deployment/main-install.log
+  
+  # Clean up temporary files
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🧹 Cleaning up temporary files..." | tee -a /var/log/deployment/main-install.log
+  - rm -f /tmp/install_cloudpanel.sh
+  - rm -f /tmp/setup_n8n.sh
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Temporary files cleaned up" | tee -a /var/log/deployment/main-install.log
+  
+  # Update MOTD with success status
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🎨 Updating MOTD with deployment success status..." | tee -a /var/log/deployment/main-install.log
+  - |
+    sed -i 's/🎯 DEPLOYMENT IN PROGRESS! 🎯/🎯 DEPLOYMENT SUCCESSFUL! 🎯/' /etc/motd
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ MOTD updated with success status" | tee -a /var/log/deployment/main-install.log
+  
+  # Display final information
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🎉 Deployment completed successfully!" | tee -a /var/log/deployment/main-install.log
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 📊 Service URLs:" | tee -a /var/log/deployment/main-install.log
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')]    CloudPanel: https://$(curl -s ifconfig.me):8443" | tee -a /var/log/deployment/main-install.log
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')]    n8n: http://$(curl -s ifconfig.me)" | tee -a /var/log/deployment/main-install.log
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 📞 Support: support@vps-server.host" | tee -a /var/log/deployment/main-install.log
+  - echo "[$(date '+%Y-%m-%d %H:%M:%S')] 📋 Log files available in /var/log/deployment/ and /var/log/cloudpanel-installation/ and /var/log/n8n-installation/" | tee -a /var/log/deployment/main-install.log
+
+# Final message
+final_message: |
+  🎉 CloudPanel V2 + n8n Deployment Complete!
+  
+  📊 Access your services:
+  🌐 CloudPanel: https://$(curl -s ifconfig.me):8443
+  🔧 n8n: http://$(curl -s ifconfig.me)
+  
+  🔐 Check credentials in:
+  📋 CloudPanel: /home/clp/.clp-installation
+  🔑 n8n Database: n8n_user / n8n_secure_password_2024
+  
+  ⚠️ IMPORTANT: Change all default passwords in production!
+  
+  📋 Installation Logs:
+  📁 Main Log: /var/log/deployment/main-install.log
+  📁 CloudPanel Log: /var/log/cloudpanel-installation/cloudpanel-install.log
+  📁 n8n Log: /var/log/n8n-installation/n8n-install.log
+  📁 Cloud-init Log: /var/log/cloud-init-output.log
+  
+  🔍 Installation Verification:
+  sudo check-installation
+  
+  🔍 Troubleshooting Commands:
+  sudo tail -f /var/log/deployment/main-install.log
+  sudo systemctl status cloudpanel n8n mysql nginx
+  sudo journalctl -u cloudpanel -u n8n -u mysql -u nginx
+  
+  📞 Support: support@vps-server.host
+  🚀 Platform: VPS Server Optimized

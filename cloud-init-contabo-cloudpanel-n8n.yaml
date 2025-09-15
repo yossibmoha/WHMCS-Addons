@@ -1,0 +1,160 @@
+#cloud-config
+
+package_update: true
+package_upgrade: true
+timezone: UTC
+
+packages:
+  - curl
+  - wget
+  - ufw
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - jq
+  - net-tools
+  - sqlite3
+
+write_files:
+  - path: /usr/local/bin/setup-cloudpanel-n8n.sh
+    permissions: '0755'
+    owner: root:root
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      # Logging
+      mkdir -p /var/log/cloudpanel-n8n
+      LOG_FILE="/var/log/cloudpanel-n8n/setup.log"
+      exec > >(tee -a "$LOG_FILE") 2>&1
+
+      echo "[INFO] Installing Docker/Compose if missing..."
+      if ! command -v docker >/dev/null; then
+        curl -fsSL https://get.docker.com | sh
+        systemctl enable --now docker
+      fi
+
+      if ! command -v docker-compose >/dev/null; then
+        curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        chmod +x /usr/local/bin/docker-compose
+      fi
+
+      echo "[INFO] Waiting for CloudPanel service..."
+      for i in {1..60}; do
+        # Normalize CloudPanel CLI name (clp or clpctl)
+        if ! command -v clp >/dev/null && command -v clpctl >/dev/null; then
+          ln -sf "$(command -v clpctl)" /usr/local/bin/clp || true
+        fi
+
+        if systemctl is-active --quiet cloudpanel && command -v clp >/dev/null; then
+          break
+        fi
+        sleep 5
+      done
+
+      SERVER_IP="$(curl -s -4 https://api64.ipify.org || hostname -I | awk '{print $1}')"
+      N8N_DOMAIN="${N8N_DOMAIN_OVERRIDE:-}"
+      if [ -z "$N8N_DOMAIN" ]; then
+        N8N_DOMAIN="n8n.${SERVER_IP}.nip.io"
+      fi
+      echo "N8N_DOMAIN=$N8N_DOMAIN" > /etc/default/n8n
+
+      mkdir -p /opt/n8n/data
+      if [ ! -f /opt/n8n/.env ]; then
+        N8N_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+        BASIC_PASS="$(openssl rand -base64 24 | tr -d '\n' | tr '/+' 'A9')"
+        cat > /opt/n8n/.env <<EOF
+      NODE_ENV=production
+      N8N_BASIC_AUTH_ACTIVE=true
+      N8N_BASIC_AUTH_USER=admin
+      N8N_BASIC_AUTH_PASSWORD=$BASIC_PASS
+      N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
+      N8N_HOST=$N8N_DOMAIN
+      N8N_PORT=5678
+      N8N_PROTOCOL=http
+      WEBHOOK_URL=http://$N8N_DOMAIN
+      DB_TYPE=sqlite
+      DB_SQLITE_VACUUM_ON_STARTUP=true
+      EOF
+        chmod 600 /opt/n8n/.env
+      fi
+
+      cat > /opt/n8n/docker-compose.yml <<'YAML'
+      version: "3.8"
+      services:
+        n8n:
+          image: n8nio/n8n:latest
+          container_name: n8n
+          restart: unless-stopped
+          env_file:
+            - .env
+          ports:
+            - "127.0.0.1:5678:5678"
+          volumes:
+            - ./data:/home/node/.n8n
+          networks:
+            - n8n_net
+      networks:
+        n8n_net:
+          driver: bridge
+      YAML
+
+      echo "[INFO] Starting n8n container..."
+      cd /opt/n8n
+      docker-compose up -d
+
+      # Create CloudPanel site and reverse proxy
+      if id clp >/dev/null 2>&1; then
+        echo "[INFO] Creating CloudPanel site $N8N_DOMAIN..."
+        su - clp -c "clp site:add --domain=$N8N_DOMAIN --php=8.2 --vhost=nginx" || true
+        mkdir -p /home/clp/sites/$N8N_DOMAIN/conf
+        cat > /home/clp/sites/$N8N_DOMAIN/conf/nginx.conf <<EOF
+      server {
+        listen 80;
+        server_name $N8N_DOMAIN;
+
+        location / {
+          proxy_pass http://127.0.0.1:5678;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade \$http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_set_header Host \$host;
+          proxy_set_header X-Real-IP \$remote_addr;
+          proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto \$scheme;
+          proxy_read_timeout 86400;
+          proxy_send_timeout 86400;
+        }
+      }
+      EOF
+        chown -R clp:clp /home/clp/sites/$N8N_DOMAIN
+        nginx -t && systemctl reload nginx || true
+      fi
+
+      CLOUD_URL="https://${SERVER_IP}:8443"
+      N8N_URL="http://${N8N_DOMAIN}"
+      cat > /etc/motd <<EOF
+      Welcome!
+
+      CloudPanel: $CLOUD_URL
+      n8n: $N8N_URL
+
+      Tip: Set N8N_DOMAIN_OVERRIDE in cloud-init user-data to use your domain.
+      EOF
+
+runcmd:
+  - ufw --force reset
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 8443/tcp
+  - ufw --force enable
+  - curl -fsSL https://installer.cloudpanel.io/ce/v2/install.sh -o /tmp/cloudpanel-install.sh
+  - [ bash, -lc, "DB_ENGINE=MYSQL_8.4 bash /tmp/cloudpanel-install.sh" ]
+  - [ bash, -lc, "/usr/local/bin/setup-cloudpanel-n8n.sh" ]
+
+final_message: |
+  CloudPanel + n8n (SQLite) deployed. Access details are printed in /etc/motd upon login.
+

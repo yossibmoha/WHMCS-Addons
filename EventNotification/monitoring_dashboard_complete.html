@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WHMCS Complete Monitoring Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #2c3e50;
+        }
+        
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 280px;
+            height: 100vh;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(0,0,0,0.1);
+            z-index: 1000;
+            padding: 20px 0;
+            overflow-y: auto;
+        }
+        
+        .sidebar-header {
+            padding: 0 25px 25px;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        .sidebar-header h2 {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .sidebar-nav {
+            padding: 20px 0;
+        }
+        
+        .nav-section {
+            margin-bottom: 30px;
+        }
+        
+        .nav-section-title {
+            padding: 0 25px 10px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #6c757d;
+            letter-spacing: 1px;
+        }
+        
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 25px;
+            color: #495057;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+        }
+        
+        .nav-item:hover, .nav-item.active {
+            background: rgba(102, 126, 234, 0.1);
+            border-left-color: #667eea;
+            color: #667eea;
+        }
+        
+        .nav-item i {
+            width: 20px;
+            margin-right: 12px;
+            font-size: 16px;
+        }
+        
+        .nav-badge {
+            margin-left: auto;
+            background: #dc3545;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7em;
+            font-weight: 600;
+        }
+        
+        .nav-badge.warning { background: #ffc107; color: #212529; }
+        .nav-badge.success { background: #28a745; }
+        .nav-badge.info { background: #17a2b8; }
+        
+        .main-content {
+            margin-left: 280px;
+            padding: 30px;
+            min-height: 100vh;
+        }
+        
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(20px);
+            padding: 20px 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .header-title {
+            font-size: 2em;
+            font-weight: 700;
+            color: #2c3e50;
+        }
+        
+        .header-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            background: #5a67d8;
+            transform: translateY(-1px);
+        }
+        
+        .btn.secondary {
+            background: #6c757d;
+        }
+        
+        .btn.danger {
+            background: #dc3545;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+        
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+        
+        .connection-dot.disconnected { background: #dc3545; }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .metric-card {
+            background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(20px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            border-left: 4px solid #28a745;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        }
+        
+        .metric-card.warning { border-left-color: #ffc107; }
+        .metric-card.error { border-left-color: #dc3545; }
+        .metric-card.info { border-left-color: #17a2b8; }
+        
+        .metric-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .metric-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #495057;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .metric-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            background: #667eea;
+        }
+        
+        .metric-icon.success { background: #28a745; }
+        .metric-icon.warning { background: #ffc107; }
+        .metric-icon.error { background: #dc3545; }
+        .metric-icon.info { background: #17a2b8; }
+        
+        .metric-value {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+        
+        .metric-label {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-bottom: 15px;
+        }
+        
+        .metric-details {
+            background: rgba(248, 249, 250, 0.8);
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            color: #495057;
+        }
+        
+        .events-timeline {
+            background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(20px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        .timeline-title {
+            font-size: 1.4em;
+            font-weight: 600;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .filter-tabs {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .filter-tab {
+            padding: 8px 15px;
+            border: none;
+            background: transparent;
+            color: #6c757d;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85em;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .filter-tab.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .event-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        
+        .event-item:last-child {
+            border-bottom: none;
+        }
+        
+        .event-icon {
+            width: 35px;
+            height: 35px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            font-size: 14px;
+            color: white;
+            flex-shrink: 0;
+        }
+        
+        .event-icon.domain { background: #28a745; }
+        .event-icon.payment { background: #17a2b8; }
+        .event-icon.security { background: #dc3545; }
+        .event-icon.email { background: #fd7e14; }
+        .event-icon.cron { background: #6f42c1; }
+        .event-icon.system { background: #6c757d; }
+        
+        .event-content {
+            flex: 1;
+        }
+        
+        .event-title {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 4px;
+        }
+        
+        .event-description {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-bottom: 6px;
+        }
+        
+        .event-meta {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 0.8em;
+            color: #868e96;
+        }
+        
+        .event-time {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .event-category {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+        
+        .analytics-section {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .chart-container {
+            background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(20px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+        
+        .chart-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .chart-canvas {
+            width: 100%;
+            height: 300px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6c757d;
+            font-style: italic;
+        }
+        
+        .quick-actions {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .quick-action {
+            background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(20px);
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-left: 4px solid #667eea;
+        }
+        
+        .quick-action:hover {
+            transform: translateX(5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        
+        .quick-action.danger { border-left-color: #dc3545; }
+        .quick-action.warning { border-left-color: #ffc107; }
+        .quick-action.success { border-left-color: #28a745; }
+        
+        .quick-action-title {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .quick-action-desc {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        
+        .alert-summary {
+            background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(20px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .alert-summary-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .alert-summary-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .alert-categories {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        
+        .alert-category {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: rgba(248, 249, 250, 0.8);
+            border-radius: 8px;
+        }
+        
+        .category-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .category-count {
+            font-weight: 700;
+            font-size: 1.1em;
+        }
+        
+        .hidden { display: none; }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+            
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+                padding: 15px;
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .analytics-section {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2><i class="fas fa-chart-line"></i> WHMCS Monitor</h2>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-title">Overview</div>
+                <div class="nav-item active" data-section="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    Dashboard
+                </div>
+                <div class="nav-item" data-section="alerts">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Active Alerts
+                    <span class="nav-badge" id="alertCount">3</span>
+                </div>
+            </div>
+            
+            <div class="nav-section">
+                <div class="nav-section-title">Event Categories</div>
+                <div class="nav-item" data-section="domain">
+                    <i class="fas fa-globe"></i>
+                    Domain Events
+                    <span class="nav-badge success" id="domainCount">12</span>
+                </div>
+                <div class="nav-item" data-section="payment">
+                    <i class="fas fa-credit-card"></i>
+                    Payment Events
+                    <span class="nav-badge info" id="paymentCount">8</span>
+                </div>
+                <div class="nav-item" data-section="security">
+                    <i class="fas fa-shield-alt"></i>
+                    Security Events
+                    <span class="nav-badge warning" id="securityCount">2</span>
+                </div>
+                <div class="nav-item" data-section="email">
+                    <i class="fas fa-envelope"></i>
+                    Email Events
+                    <span class="nav-badge info" id="emailCount">5</span>
+                </div>
+                <div class="nav-item" data-section="cron">
+                    <i class="fas fa-clock"></i>
+                    Cron Jobs
+                    <span class="nav-badge success" id="cronCount">15</span>
+                </div>
+            </div>
+            
+            <div class="nav-section">
+                <div class="nav-section-title">System</div>
+                <div class="nav-item" data-section="analytics">
+                    <i class="fas fa-chart-bar"></i>
+                    Analytics
+                </div>
+                <div class="nav-item" data-section="configuration">
+                    <i class="fas fa-cog"></i>
+                    Configuration
+                </div>
+                <div class="nav-item" data-section="health">
+                    <i class="fas fa-heartbeat"></i>
+                    System Health
+                </div>
+            </div>
+        </nav>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Header Bar -->
+        <div class="header-bar">
+            <div class="header-title" id="pageTitle">Complete Monitoring Dashboard</div>
+            <div class="header-controls">
+                <div class="connection-status">
+                    <div class="connection-dot" id="connectionDot"></div>
+                    <span id="connectionText">Connected</span>
+                </div>
+                <button class="btn" onclick="refreshData()">
+                    <i class="fas fa-sync-alt"></i>
+                    Refresh
+                </button>
+                <button class="btn secondary" onclick="exportData()">
+                    <i class="fas fa-download"></i>
+                    Export
+                </button>
+            </div>
+        </div>
+        
+        <!-- Dashboard Section -->
+        <div id="dashboardSection" class="section">
+            <!-- Metrics Grid -->
+            <div class="dashboard-grid">
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <div class="metric-title">
+                            <div class="metric-icon success">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            Total Events Today
+                        </div>
+                    </div>
+                    <div class="metric-value" id="totalEvents">247</div>
+                    <div class="metric-label">Across all categories</div>
+                    <div class="metric-details">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Success:</span>
+                            <span style="color: #28a745; font-weight: 600;">231 (93.5%)</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Warnings:</span>
+                            <span style="color: #ffc107; font-weight: 600;">13 (5.3%)</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Errors:</span>
+                            <span style="color: #dc3545; font-weight: 600;">3 (1.2%)</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="metric-card warning">
+                    <div class="metric-header">
+                        <div class="metric-title">
+                            <div class="metric-icon warning">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            Active Alerts
+                        </div>
+                    </div>
+                    <div class="metric-value" id="activeAlerts">3</div>
+                    <div class="metric-label">Requiring attention</div>
+                    <div class="metric-details">
+                        2 SSL expiration warnings<br>
+                        1 High disk usage alert
+                    </div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <div class="metric-title">
+                            <div class="metric-icon info">
+                                <i class="fas fa-globe"></i>
+                            </div>
+                            Domain Management
+                        </div>
+                    </div>
+                    <div class="metric-value" id="domainEvents">12</div>
+                    <div class="metric-label">Events in last 24h</div>
+                    <div class="metric-details">
+                        8 Renewals, 3 Registrations, 1 Transfer
+                    </div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <div class="metric-title">
+                            <div class="metric-icon info">
+                                <i class="fas fa-credit-card"></i>
+                            </div>
+                            Payment Processing
+                        </div>
+                    </div>
+                    <div class="metric-value" id="paymentEvents">8</div>
+                    <div class="metric-label">Transactions today</div>
+                    <div class="metric-details">
+                        $2,347 processed, 1 failed transaction
+                    </div>
+                </div>
+                
+                <div class="metric-card error">
+                    <div class="metric-header">
+                        <div class="metric-title">
+                            <div class="metric-icon error">
+                                <i class="fas fa-shield-alt"></i>
+                            </div>
+                            Security Events
+                        </div>
+                    </div>
+                    <div class="metric-value" id="securityEvents">2</div>
+                    <div class="metric-label">Security incidents</div>
+                    <div class="metric-details">
+                        1 Failed admin login, 1 Suspicious API access
+                    </div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <div class="metric-title">
+                            <div class="metric-icon warning">
+                                <i class="fas fa-envelope"></i>
+                            </div>
+                            Email System
+                        </div>
+                    </div>
+                    <div class="metric-value" id="emailEvents">5</div>
+                    <div class="metric-label">Email issues today</div>
+                    <div class="metric-details">
+                        3 Delivery failures, 2 Bounce notifications
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Analytics Section -->
+            <div class="analytics-section">
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <div class="chart-title">Event Timeline (Last 24 Hours)</div>
+                        <div class="filter-tabs">
+                            <button class="filter-tab active">All</button>
+                            <button class="filter-tab">Errors</button>
+                            <button class="filter-tab">Warnings</button>
+                        </div>
+                    </div>
+                    <div class="chart-canvas">
+                        Real-time event timeline chart would be rendered here using Chart.js
+                    </div>
+                </div>
+                
+                <div class="quick-actions">
+                    <div class="quick-action danger" onclick="acknowledgeAlerts()">
+                        <div class="quick-action-title">
+                            <i class="fas fa-bell"></i>
+                            Acknowledge Alerts
+                        </div>
+                        <div class="quick-action-desc">Mark active alerts as acknowledged</div>
+                    </div>
+                    
+                    <div class="quick-action warning" onclick="testNotifications()">
+                        <div class="quick-action-title">
+                            <i class="fas fa-paper-plane"></i>
+                            Test Notifications
+                        </div>
+                        <div class="quick-action-desc">Send test notification via ntfy & email</div>
+                    </div>
+                    
+                    <div class="quick-action success" onclick="runHealthCheck()">
+                        <div class="quick-action-title">
+                            <i class="fas fa-heartbeat"></i>
+                            Run Health Check
+                        </div>
+                        <div class="quick-action-desc">Execute comprehensive system check</div>
+                    </div>
+                    
+                    <div class="quick-action" onclick="viewLogs()">
+                        <div class="quick-action-title">
+                            <i class="fas fa-file-alt"></i>
+                            View Full Logs
+                        </div>
+                        <div class="quick-action-desc">Access complete event history</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recent Events Timeline -->
+            <div class="events-timeline">
+                <div class="timeline-header">
+                    <div class="timeline-title">
+                        <i class="fas fa-history"></i>
+                        Recent Events
+                    </div>
+                    <div class="filter-tabs">
+                        <button class="filter-tab active" data-filter="all">All</button>
+                        <button class="filter-tab" data-filter="domain">Domain</button>
+                        <button class="filter-tab" data-filter="payment">Payment</button>
+                        <button class="filter-tab" data-filter="security">Security</button>
+                        <button class="filter-tab" data-filter="email">Email</button>
+                        <button class="filter-tab" data-filter="cron">Cron</button>
+                    </div>
+                </div>
+                
+                <div id="eventsList">
+                    <!-- Events will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Alert Management Section -->
+        <div id="alertsSection" class="section hidden">
+            <div class="alert-summary">
+                <div class="alert-summary-header">
+                    <div class="alert-summary-title">Active Alert Management</div>
+                </div>
+                
+                <div class="alert-categories">
+                    <div class="alert-category">
+                        <div class="category-info">
+                            <div class="metric-icon error"><i class="fas fa-exclamation-circle"></i></div>
+                            <div>
+                                <div style="font-weight: 600;">Critical Alerts</div>
+                                <div style="font-size: 0.8em; color: #6c757d;">Immediate attention required</div>
+                            </div>
+                        </div>
+                        <div class="category-count" style="color: #dc3545;">1</div>
+                    </div>
+                    
+                    <div class="alert-category">
+                        <div class="category-info">
+                            <div class="metric-icon warning"><i class="fas fa-exclamation-triangle"></i></div>
+                            <div>
+                                <div style="font-weight: 600;">Warning Alerts</div>
+                                <div style="font-size: 0.8em; color: #6c757d;">Monitor closely</div>
+                            </div>
+                        </div>
+                        <div class="category-count" style="color: #ffc107;">2</div>
+                    </div>
+                    
+                    <div class="alert-category">
+                        <div class="category-info">
+                            <div class="metric-icon success"><i class="fas fa-check-circle"></i></div>
+                            <div>
+                                <div style="font-weight: 600;">Acknowledged</div>
+                                <div style="font-size: 0.8em; color: #6c757d;">Being handled</div>
+                            </div>
+                        </div>
+                        <div class="category-count" style="color: #28a745;">5</div>
+                    </div>
+                    
+                    <div class="alert-category">
+                        <div class="category-info">
+                            <div class="metric-icon info"><i class="fas fa-clock"></i></div>
+                            <div>
+                                <div style="font-weight: 600;">Escalated</div>
+                                <div style="font-size: 0.8em; color: #6c757d;">Auto-escalated alerts</div>
+                            </div>
+                        </div>
+                        <div class="category-count" style="color: #17a2b8;">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Application state
+        let currentSection = 'dashboard';
+        let autoRefreshInterval;
+        let connectionStatus = 'connected';
+        
+        // Sample events data representing the comprehensive monitoring
+        const sampleEvents = [
+            {
+                category: 'domain',
+                icon: 'fas fa-globe',
+                title: 'Domain Renewal Completed',
+                description: 'example.com renewed successfully for 1 year',
+                time: '2 minutes ago',
+                status: 'success'
+            },
+            {
+                category: 'payment',
+                icon: 'fas fa-credit-card',
+                title: 'Payment Received',
+                description: 'Invoice #12345 paid via PayPal - $99.99',
+                time: '5 minutes ago',
+                status: 'success'
+            },
+            {
+                category: 'security',
+                icon: 'fas fa-shield-alt',
+                title: 'Failed Admin Login',
+                description: 'Failed login attempt from IP 192.168.1.100',
+                time: '8 minutes ago',
+                status: 'error'
+            },
+            {
+                category: 'email',
+                icon: 'fas fa-envelope',
+                title: 'Email Delivery Failed',
+                description: 'Welcome email bounce for user@domain.com',
+                time: '12 minutes ago',
+                status: 'warning'
+            },
+            {
+                category: 'cron',
+                icon: 'fas fa-clock',
+                title: 'Daily Backup Completed',
+                description: 'Automated backup job finished successfully',
+                time: '15 minutes ago',
+                status: 'success'
+            },
+            {
+                category: 'domain',
+                icon: 'fas fa-globe',
+                title: 'Domain Transfer Initiated',
+                description: 'Transfer request for newdomain.com started',
+                time: '20 minutes ago',
+                status: 'info'
+            },
+            {
+                category: 'security',
+                icon: 'fas fa-shield-alt',
+                title: 'Suspicious API Activity',
+                description: 'High frequency API calls detected from unknown source',
+                time: '25 minutes ago',
+                status: 'warning'
+            },
+            {
+                category: 'payment',
+                icon: 'fas fa-credit-card',
+                title: 'Payment Gateway Error',
+                description: 'Stripe connection timeout - transaction failed',
+                time: '30 minutes ago',
+                status: 'error'
+            }
+        ];
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeDashboard();
+            startAutoRefresh();
+        });
+        
+        function initializeDashboard() {
+            setupNavigation();
+            populateEvents();
+            updateMetrics();
+        }
+        
+        function setupNavigation() {
+            const navItems = document.querySelectorAll('.nav-item[data-section]');
+            navItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    const section = this.getAttribute('data-section');
+                    switchSection(section);
+                });
+            });
+            
+            // Filter tabs
+            const filterTabs = document.querySelectorAll('.filter-tab[data-filter]');
+            filterTabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const filter = this.getAttribute('data-filter');
+                    filterEvents(filter);
+                    
+                    // Update active tab
+                    filterTabs.forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                });
+            });
+        }
+        
+        function switchSection(section) {
+            // Update navigation
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-section="${section}"]`).classList.add('active');
+            
+            // Show/hide sections
+            document.querySelectorAll('.section').forEach(sec => {
+                sec.classList.add('hidden');
+            });
+            
+            const sectionElement = document.getElementById(`${section}Section`);
+            if (sectionElement) {
+                sectionElement.classList.remove('hidden');
+            }
+            
+            // Update page title
+            const titles = {
+                dashboard: 'Complete Monitoring Dashboard',
+                alerts: 'Active Alert Management',
+                domain: 'Domain Event Monitor',
+                payment: 'Payment Event Monitor',
+                security: 'Security Event Monitor',
+                email: 'Email Event Monitor',
+                cron: 'Cron Job Monitor',
+                analytics: 'Analytics & Reports',
+                configuration: 'System Configuration',
+                health: 'System Health Status'
+            };
+            
+            document.getElementById('pageTitle').textContent = titles[section] || 'Monitoring Dashboard';
+            currentSection = section;
+        }
+        
+        function populateEvents() {
+            const eventsList = document.getElementById('eventsList');
+            
+            const eventsHTML = sampleEvents.map(event => `
+                <div class="event-item" data-category="${event.category}">
+                    <div class="event-icon ${event.category}">
+                        <i class="${event.icon}"></i>
+                    </div>
+                    <div class="event-content">
+                        <div class="event-title">${event.title}</div>
+                        <div class="event-description">${event.description}</div>
+                        <div class="event-meta">
+                            <div class="event-time">
+                                <i class="fas fa-clock"></i>
+                                ${event.time}
+                            </div>
+                            <div class="event-category">${event.category}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            eventsList.innerHTML = eventsHTML;
+        }
+        
+        function filterEvents(filter) {
+            const events = document.querySelectorAll('.event-item');
+            events.forEach(event => {
+                if (filter === 'all' || event.getAttribute('data-category') === filter) {
+                    event.style.display = 'flex';
+                } else {
+                    event.style.display = 'none';
+                }
+            });
+        }
+        
+        function updateMetrics() {
+            // Simulate real-time metric updates
+            const metrics = {
+                totalEvents: Math.floor(Math.random() * 50) + 200,
+                activeAlerts: Math.floor(Math.random() * 5) + 1,
+                domainEvents: Math.floor(Math.random() * 10) + 5,
+                paymentEvents: Math.floor(Math.random() * 15) + 3,
+                securityEvents: Math.floor(Math.random() * 5) + 1,
+                emailEvents: Math.floor(Math.random() * 8) + 2
+            };
+            
+            Object.keys(metrics).forEach(metric => {
+                const element = document.getElementById(metric);
+                if (element) {
+                    element.textContent = metrics[metric];
+                }
+            });
+            
+            // Update sidebar badges
+            document.getElementById('alertCount').textContent = metrics.activeAlerts;
+            document.getElementById('domainCount').textContent = metrics.domainEvents;
+            document.getElementById('paymentCount').textContent = metrics.paymentEvents;
+            document.getElementById('securityCount').textContent = metrics.securityEvents;
+            document.getElementById('emailCount').textContent = metrics.emailEvents;
+            document.getElementById('cronCount').textContent = '15'; // Static for now
+        }
+        
+        function refreshData() {
+            updateConnectionStatus('connecting');
+            
+            // Simulate API call
+            setTimeout(() => {
+                updateMetrics();
+                populateEvents();
+                updateConnectionStatus('connected');
+            }, 1500);
+        }
+        
+        function updateConnectionStatus(status) {
+            const dot = document.getElementById('connectionDot');
+            const text = document.getElementById('connectionText');
+            
+            dot.className = `connection-dot ${status}`;
+            
+            switch (status) {
+                case 'connected':
+                    text.textContent = 'Connected';
+                    break;
+                case 'connecting':
+                    text.textContent = 'Updating...';
+                    break;
+                case 'disconnected':
+                    text.textContent = 'Disconnected';
+                    break;
+            }
+            
+            connectionStatus = status;
+        }
+        
+        function startAutoRefresh() {
+            autoRefreshInterval = setInterval(() => {
+                if (connectionStatus !== 'connecting') {
+                    updateMetrics();
+                }
+            }, 30000);
+        }
+        
+        // Quick action functions
+        function acknowledgeAlerts() {
+            alert('Alert acknowledgment system would be integrated here with the AlertManager class');
+        }
+        
+        function testNotifications() {
+            alert('Test notification would be sent via ntfy and email using the notification system');
+        }
+        
+        function runHealthCheck() {
+            alert('Comprehensive health check would run all monitoring scripts and provide status report');
+        }
+        
+        function viewLogs() {
+            alert('Full log viewer would open with historical data from HistoricalDataManager');
+        }
+        
+        function exportData() {
+            alert('Data export functionality would generate reports from all monitoring categories');
+        }
+        
+        // Mobile responsiveness
+        function toggleSidebar() {
+            document.querySelector('.sidebar').classList.toggle('open');
+        }
+        
+        // Add mobile menu toggle if needed
+        if (window.innerWidth <= 768) {
+            const headerBar = document.querySelector('.header-bar');
+            const menuButton = document.createElement('button');
+            menuButton.innerHTML = '<i class="fas fa-bars"></i>';
+            menuButton.className = 'btn';
+            menuButton.onclick = toggleSidebar;
+            headerBar.insertBefore(menuButton, headerBar.firstChild);
+        }
+    </script>
+</body>
+</html>
