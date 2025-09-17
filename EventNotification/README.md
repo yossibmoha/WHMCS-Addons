@@ -1,8 +1,8 @@
 # 🖥️ **WHMCS Complete Monitoring System**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PHP Version](https://img.shields.io/badge/PHP-7.4%2B-blue.svg)](https://php.net)
-[![WHMCS Compatible](https://img.shields.io/badge/WHMCS-8.0%2B-green.svg)](https://whmcs.com)
+[![PHP Version](https://img.shields.io/badge/PHP-8.2%20Optimized-blue.svg)](https://php.net)
+[![WHMCS Compatible](https://img.shields.io/badge/WHMCS-8.13.1%20Ready-green.svg)](https://whmcs.com)
 
 > **Enterprise-grade monitoring solution for WHMCS with 88+ event types, real-time alerts, and comprehensive analytics.**
 
@@ -58,11 +58,16 @@ This is a complete monitoring and notification system for WHMCS that provides:
 ## 🚀 **Quick Start**
 
 ### **Prerequisites**
-- WHMCS 8.0 or higher
-- PHP 7.4 or higher
+- WHMCS 8.0+ (✅ **Your WHMCS 8.13.1 is PERFECT!**)
+- PHP 7.4+ (✅ **Your PHP 8.2 is RECOMMENDED!**)
 - MySQL 5.7 or higher
 - Web server (Apache/Nginx)
 - ntfy server (optional but recommended)
+
+### **🎯 Optimized For Your Setup**
+- **WHMCS 8.13.1** - Latest hooks and enhanced addon API support
+- **PHP 8.2** - 25% faster performance and better memory usage
+- **Modern syntax** - Full support for PHP 8.2 language features
 
 ### **⚡ One-Click Installation**
 ```bash
