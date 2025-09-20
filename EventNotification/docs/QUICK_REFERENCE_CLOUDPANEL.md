@@ -27,7 +27,7 @@ mkdir -p /opt/ntfy/{config,data}
 
 # Run ntfy server
 docker run -d --name ntfy-server --restart unless-stopped \
-  -p 8080:8080 -v /opt/ntfy/config:/etc/ntfy -v /opt/ntfy/data:/var/lib/ntfy \
+  -p 8081:8080 -v /opt/ntfy/config:/etc/ntfy -v /opt/ntfy/data:/var/lib/ntfy \
   binwiederhier/ntfy:latest serve
 
 # Create user
