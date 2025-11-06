@@ -7,9 +7,9 @@ $environment = $_ENV['WHMCS_ENV'] ?? 'production';
 
 switch ($environment) {
     case 'development':
-        define('NTFY_SERVER_URL', 'http://localhost:80');
+        define('NTFY_SERVER_URL', 'https://ntfy.vps-server.host');
         define('NTFY_TOPIC', 'whmcs-dev-alerts');
-        define('NOTIFICATION_EMAIL', 'dev@yourdomain.com');
+        define('NOTIFICATION_EMAIL', 'admin@vps-server.host');
         break;
     
     case 'staging':
@@ -19,9 +19,14 @@ switch ($environment) {
         break;
     
     default: // production
-        define('NTFY_SERVER_URL', 'https://your-ntfy-server.com');
+        define('NTFY_SERVER_URL', 'https://ntfy.vps-server.host');
         define('NTFY_TOPIC', 'whmcs-alerts');
-        define('NOTIFICATION_EMAIL', 'admin@yourdomain.com');
+	define('NOTIFICATION_EMAIL', 'admin@vps-server.host');
+	define('NTFY_USERNAME', 'yossefb');
+        define('NTFY_PASSWORD', 'NsaaY20@#');
+        define('WHMCS_API_IDENTIFIER', 'vV63CtSUKZVuEiasq3ZkuI5pWawlL0WM');
+        define('WHMCS_API_SECRET', 'sdhR1w3gOz5G1Xg7BqVWOnzGzSt2axn2');
+        define('WHMCS_URL', rtrim(WHMCSConfigSetting::getValue('SystemURL'), '/'));
         break;
 }
 
